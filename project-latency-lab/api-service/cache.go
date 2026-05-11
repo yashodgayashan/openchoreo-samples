@@ -19,7 +19,7 @@ func NewCache(addr string) *Cache {
 	if addr == "" {
 		return nil
 	}
-	client := redis.NewClient(&redis.Options{
+	client := redis.NewClient(&redis.Options{()
 		Addr:         addr,
 		DialTimeout:  2 * time.Second,
 		ReadTimeout:  1 * time.Second,
