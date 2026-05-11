@@ -22,14 +22,7 @@ Each component pairs a `Component` resource with a one-shot `WorkflowRun` that b
 
 - An OpenChoreo cluster (control plane + observability plane).
 - `kubectl` access.
-- **A Git repo hosting this code.** The manifests reference
-  `https://github.com/openchoreo/openchoreo-trace` on `main` — replace that
-  with your fork/repo before applying:
-
-  ```bash
-  grep -rl 'openchoreo/openchoreo-trace' openchoreo/ \
-    | xargs sed -i '' 's|openchoreo/openchoreo-trace|<your-org>/<your-repo>|g'
-  ```
+- Source is pulled from `https://github.com/yashodgayashan/openchoreo-samples` on `main`. If you're working off a fork, swap the URL in `openchoreo/project-latency-lab/components/*.yaml` first.
 
 ## Deploy
 

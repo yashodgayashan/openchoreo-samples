@@ -18,7 +18,7 @@ spec:
     name: dockerfile-builder
     parameters:
       repository:
-        url: "https://github.com/openchoreo/openchoreo-trace"
+        url: "https://github.com/yashodgayashan/openchoreo-samples"
         revision:
           branch: "main"
         appPath: "/project-latency-lab/api-service"
@@ -40,7 +40,7 @@ spec:
     name: dockerfile-builder
     parameters:
       repository:
-        url: "https://github.com/openchoreo/openchoreo-trace"
+        url: "https://github.com/yashodgayashan/openchoreo-samples"
         revision:
           branch: "main"
         appPath: "/project-latency-lab/api-service"
