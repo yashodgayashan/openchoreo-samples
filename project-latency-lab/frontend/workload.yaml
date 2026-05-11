@@ -1,0 +1,29 @@
+apiVersion: openchoreo.dev/v1alpha1
+
+metadata:
+  name: frontend
+
+endpoints:
+  - name: webapp
+    port: 3000
+    type: HTTP
+    visibility:
+      - external
+
+dependencies:
+  endpoints:
+    - component: lab-api-service
+      name: api
+      visibility: project
+      envBindings:
+        address: API_SERVICE_URL
+    - component: lab-analytics-service
+      name: analytics-api
+      visibility: project
+      envBindings:
+        address: ANALYTICS_SERVICE_URL
+
+configurations:
+  env:
+    - name: PORT
+      value: "3000"

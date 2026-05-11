@@ -1,0 +1,29 @@
+apiVersion: openchoreo.dev/v1alpha1
+
+metadata:
+  name: api-service
+
+endpoints:
+  - name: api
+    port: 8080
+    type: HTTP
+
+dependencies:
+  endpoints:
+    - component: lab-postgres
+      name: postgres
+      visibility: project
+      envBindings:
+        address: _
+    - component: lab-redis
+      name: redis
+      visibility: project
+      envBindings:
+        address: REDIS_ADDR
+
+configurations:
+  env:
+    - name: PORT
+      value: "8080"
+    - name: POSTGRES_DSN
+      value: "postgres://postgres:postgres@lab-postgres:5432/notes?sslmode=disable"
