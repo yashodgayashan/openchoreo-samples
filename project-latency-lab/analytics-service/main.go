@@ -7,6 +7,9 @@ import (
 )
 
 func main() {
+	shutdown := initTracer("analytics-service")
+	defer shutdown()
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8081"
@@ -30,7 +33,7 @@ func main() {
 	mux.HandleFunc("GET /api/analytics/", handleNoteStats(store, cache))
 	mux.HandleFunc("GET /health", handleHealth(store))
 
-	handler := loggingMiddleware(corsMiddleware(delayMiddleware(mux)))
+	handler := loggingMiddleware(corsMiddleware(tracingMiddleware(delayMiddleware(mux))))
 
 	log.Printf("analytics-service listening on :%s", port)
 	if err := http.ListenAndServe(":"+port, handler); err != nil {

@@ -1,3 +1,12 @@
+CREATE TABLE IF NOT EXISTS users (
+    id           SERIAL PRIMARY KEY,
+    username     VARCHAR(100) UNIQUE NOT NULL,
+    token        VARCHAR(64) UNIQUE NOT NULL,
+    created_at   TIMESTAMPTZ DEFAULT NOW(),
+    updated_at   TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_users_token ON users(token);
+
 CREATE TABLE IF NOT EXISTS notes (
     id           VARCHAR(20) PRIMARY KEY,
     author       VARCHAR(100) NOT NULL,

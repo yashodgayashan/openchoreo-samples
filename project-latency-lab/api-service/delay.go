@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log/slog"
 	"math/rand"
 	"net/http"
 	"strconv"
@@ -78,7 +77,7 @@ func applyDelay(ctx context.Context, stage string) {
 	if o.stage != StageAll && o.stage != stage {
 		return
 	}
-	slog.Debug("injecting latency", "stage", stage, "delay_ms", o.delayMs)
+	logger(ctx).Info("injecting latency", "stage", stage, "delay_ms", o.delayMs)
 	t := time.NewTimer(time.Duration(o.delayMs) * time.Millisecond)
 	defer t.Stop()
 	select {

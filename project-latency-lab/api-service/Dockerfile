@@ -10,5 +10,6 @@ FROM alpine:3.19
 RUN apk --no-cache add ca-certificates
 WORKDIR /app
 COPY --from=builder /app/api-service .
-EXPOSE 8080
+EXPOSE 8081
+USER 1001
 CMD ["./api-service"]

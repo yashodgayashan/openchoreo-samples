@@ -11,6 +11,7 @@ openchoreo/project-latency-lab/
 └── components/
     ├── postgres.yaml                  # lab-postgres          (deployment/service)
     ├── redis.yaml                     # lab-redis             (deployment/service)
+    ├── auth-service.yaml              # lab-auth-service      (deployment/service)
     ├── api-service.yaml               # lab-api-service       (deployment/service)
     ├── analytics-service.yaml         # lab-analytics-service (deployment/service)
     └── frontend.yaml                  # lab-frontend          (deployment/web-application + 5xx alert)
@@ -33,6 +34,7 @@ kubectl apply -f openchoreo/project-latency-lab/project.yaml
 kubectl apply \
   -f openchoreo/project-latency-lab/components/postgres.yaml \
   -f openchoreo/project-latency-lab/components/redis.yaml \
+  -f openchoreo/project-latency-lab/components/auth-service.yaml \
   -f openchoreo/project-latency-lab/components/api-service.yaml \
   -f openchoreo/project-latency-lab/components/analytics-service.yaml \
   -f openchoreo/project-latency-lab/components/frontend.yaml

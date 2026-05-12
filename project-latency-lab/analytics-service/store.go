@@ -8,6 +8,7 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type TopNote struct {
@@ -41,6 +42,9 @@ func NewStore(dsn string) *Store {
 const queryTimeout = 35 * time.Second
 
 func (s *Store) GetViewCount(ctx context.Context, id string) (int64, error) {
+	ctx, span := tracer.Start(ctx, "store.GetViewCount")
+	defer span.End()
+	span.SetAttributes(attribute.String("note.id", id))
 	applyDelay(ctx, StageDB)
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
@@ -53,6 +57,9 @@ func (s *Store) GetViewCount(ctx context.Context, id string) (int64, error) {
 }
 
 func (s *Store) RecentViews(ctx context.Context, id string, limit int) ([]string, error) {
+	ctx, span := tracer.Start(ctx, "store.RecentViews")
+	defer span.End()
+	span.SetAttributes(attribute.String("note.id", id))
 	applyDelay(ctx, StageDB)
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
@@ -78,6 +85,8 @@ func (s *Store) RecentViews(ctx context.Context, id string, limit int) ([]string
 }
 
 func (s *Store) TopNotes(ctx context.Context, limit int) ([]TopNote, error) {
+	ctx, span := tracer.Start(ctx, "store.TopNotes")
+	defer span.End()
 	applyDelay(ctx, StageDB)
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()

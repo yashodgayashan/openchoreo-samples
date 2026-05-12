@@ -3,9 +3,10 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"strings"
+
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type ErrorResponse struct {
@@ -13,14 +14,15 @@ type ErrorResponse struct {
 }
 
 type NoteStats struct {
-	NoteID       string   `json:"note_id"`
-	ViewCount    int64    `json:"view_count"`
-	RecentViews  []string `json:"recent_views"`
+	NoteID      string   `json:"note_id"`
+	ViewCount   int64    `json:"view_count"`
+	RecentViews []string `json:"recent_views"`
 }
 
 func handleNoteStats(store *Store, cache *Cache) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
+		ctx, span := tracer.Start(r.Context(), "handler.NoteStats")
+		defer span.End()
 		applyDelay(ctx, StageHandler)
 
 		id := strings.TrimPrefix(r.URL.Path, "/api/analytics/")
@@ -28,14 +30,17 @@ func handleNoteStats(store *Store, cache *Cache) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "note id required"})
 			return
 		}
+		span.SetAttributes(attribute.String("note.id", id))
 
 		if shouldFail(ctx) {
+			span.SetAttributes(attribute.Bool("fault.injected", true))
+			logger(ctx).Warn("fault injected", "path", r.URL.Path, "fail_rate", optsFrom(ctx).failRate)
 			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "injected failure"})
 			return
 		}
 
-		// Try cache first.
 		count, recent, hit := cache.GetStats(ctx, id)
+		span.SetAttributes(attribute.Bool("cache.hit", hit))
 		if !hit {
 			c, err := store.GetViewCount(ctx, id)
 			if err != nil {
@@ -43,13 +48,13 @@ func handleNoteStats(store *Store, cache *Cache) http.HandlerFunc {
 					writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "not found"})
 					return
 				}
-				slog.Error("get view count", "id", id, "error", err)
+				logger(ctx).Error("get view count failed", "id", id, "error", err)
 				writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "internal error"})
 				return
 			}
 			rs, err := store.RecentViews(ctx, id, 50)
 			if err != nil {
-				slog.Warn("recent views", "id", id, "error", err)
+				logger(ctx).Warn("recent views failed", "id", id, "error", err)
 			}
 			count = c
 			recent = rs
@@ -69,17 +74,20 @@ func handleNoteStats(store *Store, cache *Cache) http.HandlerFunc {
 
 func handleTop(store *Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
+		ctx, span := tracer.Start(r.Context(), "handler.Top")
+		defer span.End()
 		applyDelay(ctx, StageHandler)
 
 		if shouldFail(ctx) {
+			span.SetAttributes(attribute.Bool("fault.injected", true))
+			logger(ctx).Warn("fault injected", "path", r.URL.Path, "fail_rate", optsFrom(ctx).failRate)
 			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "injected failure"})
 			return
 		}
 
 		rows, err := store.TopNotes(ctx, 10)
 		if err != nil {
-			slog.Error("top notes", "error", err)
+			logger(ctx).Error("top notes failed", "error", err)
 			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "internal error"})
 			return
 		}

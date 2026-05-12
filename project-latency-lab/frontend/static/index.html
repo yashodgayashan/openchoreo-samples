@@ -19,14 +19,25 @@
   pre { background: #f6f8fa; padding: 0.75rem; border-radius: 4px; overflow: auto; font-size: 0.85rem; }
   .note { border: 1px solid #eee; border-radius: 6px; padding: 0.75rem; margin: 0.5rem 0; }
   .meta { color: #888; font-size: 0.8rem; }
+  code { font-size: 0.85em; }
 </style>
 </head>
 <body>
   <h1>Latency Lab</h1>
-  <p class="sub">Notes service with conditional latency / fault injection.</p>
+  <p class="sub">Notes service with conditional latency / fault injection across <strong>frontend → api → auth → db/cache</strong>.</p>
 
   <fieldset>
-    <legend>Latency knobs (apply to every request below)</legend>
+    <legend>Auth</legend>
+    <label>Username</label>
+    <input id="username" value="alice" />
+    <p>
+      <button onclick="registerUser()">POST /api/auth/users</button>
+      <span class="meta">token: <code id="tok">(none)</code></span>
+    </p>
+  </fieldset>
+
+  <fieldset>
+    <legend>Latency knobs (forwarded to every backend hop, including auth)</legend>
     <div class="row">
       <div>
         <label>delay_ms</label>
@@ -51,8 +62,6 @@
 
   <fieldset>
     <legend>Create note</legend>
-    <label>Author</label>
-    <input id="author" value="alice" />
     <label>Body</label>
     <textarea id="body">hello latency lab</textarea>
     <p><button onclick="createNote()">POST /api/notes</button></p>
@@ -85,27 +94,39 @@ function qs() {
   return q ? '?' + q : '';
 }
 
-async function call(method, path, body) {
+function token() { return localStorage.getItem('lab.token') || ''; }
+function setToken(t) {
+  if (t) localStorage.setItem('lab.token', t);
+  document.getElementById('tok').textContent = token() || '(none)';
+}
+setToken();
+
+async function call(method, path, body, opts = {}) {
   const t0 = performance.now();
-  const opts = { method, headers: {} };
+  const o = { method, headers: {} };
   if (body !== undefined) {
-    opts.headers['Content-Type'] = 'application/json';
-    opts.body = JSON.stringify(body);
+    o.headers['Content-Type'] = 'application/json';
+    o.body = JSON.stringify(body);
   }
+  if (opts.auth !== false && token()) o.headers['X-Auth-Token'] = token();
   const url = path + qs();
-  const r = await fetch(url, opts);
+  const r = await fetch(url, o);
   const ms = Math.round(performance.now() - t0);
-  let data;
-  try { data = await r.json(); } catch { data = null; }
+  let data; try { data = await r.json(); } catch { data = null; }
   document.getElementById('out').textContent =
     `${method} ${url}\n→ ${r.status} (${ms} ms)\n` + JSON.stringify(data, null, 2);
   return { status: r.status, data };
 }
 
+async function registerUser() {
+  const username = document.getElementById('username').value.trim();
+  const { data } = await call('POST', '/api/auth/users', { username }, { auth: false });
+  if (data && data.token) setToken(data.token);
+}
+
 async function createNote() {
-  const author = document.getElementById('author').value;
-  const body   = document.getElementById('body').value;
-  await call('POST', '/api/notes', { author, body });
+  const body = document.getElementById('body').value;
+  await call('POST', '/api/notes', { body });
   listNotes();
 }
 

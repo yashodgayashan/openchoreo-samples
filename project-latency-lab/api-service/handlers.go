@@ -1,36 +1,74 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
-	"log/slog"
+	"errors"
 	"net/http"
 	"strings"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
+// authenticate resolves X-Auth-Token via the auth-service. On failure it
+// writes the response and returns ok=false. The latency-knob query string
+// is forwarded so injection works end-to-end across services.
+func authenticate(ctx context.Context, w http.ResponseWriter, r *http.Request, auth *AuthClient, span trace.Span) (string, bool) {
+	log := logger(ctx)
+	token := r.Header.Get("X-Auth-Token")
+	if token == "" {
+		log.Info("auth rejected: missing X-Auth-Token", "path", r.URL.Path)
+		span.SetAttributes(attribute.String("auth.outcome", "missing_token"))
+		writeJSON(w, http.StatusUnauthorized, ErrorResponse{Error: "missing X-Auth-Token"})
+		return "", false
+	}
+	username, err := auth.Verify(ctx, token, r.URL.RawQuery)
+	if err != nil {
+		if errors.Is(err, ErrUnauthorized) {
+			log.Info("auth rejected: invalid token", "path", r.URL.Path)
+			span.SetAttributes(attribute.String("auth.outcome", "invalid_token"))
+			writeJSON(w, http.StatusUnauthorized, ErrorResponse{Error: "invalid token"})
+			return "", false
+		}
+		log.Error("auth verify failed", "error", err, "path", r.URL.Path)
+		span.SetAttributes(attribute.String("auth.outcome", "backend_error"), attribute.String("auth.error", err.Error()))
+		writeJSON(w, http.StatusBadGateway, ErrorResponse{Error: "auth unavailable"})
+		return "", false
+	}
+	log.Debug("auth ok", "username", username)
+	return username, true
+}
+
 type CreateRequest struct {
-	Author string `json:"author"`
-	Body   string `json:"body"`
+	Body string `json:"body"`
 }
 
 type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
-func handleCreate(store *Store, cache *Cache) http.HandlerFunc {
+func handleCreate(store *Store, cache *Cache, auth *AuthClient) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
+		ctx, span := tracer.Start(r.Context(), "handler.Create")
+		defer span.End()
 		applyDelay(ctx, StageHandler)
+
+		author, ok := authenticate(ctx, w, r, auth, span)
+		if !ok {
+			return
+		}
 
 		var req CreateRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request body"})
 			return
 		}
-		if req.Author == "" || req.Body == "" {
-			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "author and body are required"})
+		if req.Body == "" {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "body is required"})
 			return
 		}
 		if len(req.Body) > 10_000 {
@@ -39,14 +77,18 @@ func handleCreate(store *Store, cache *Cache) http.HandlerFunc {
 		}
 
 		if shouldFail(ctx) {
+			span.SetAttributes(attribute.Bool("fault.injected", true))
+			logger(ctx).Warn("fault injected", "path", r.URL.Path, "fail_rate", optsFrom(ctx).failRate)
 			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "injected failure"})
 			return
 		}
 
 		id := generateID()
-		n, err := store.InsertNote(ctx, id, req.Author, req.Body)
+		span.SetAttributes(attribute.String("note.id", id), attribute.String("author", author))
+
+		n, err := store.InsertNote(ctx, id, author, req.Body)
 		if err != nil {
-			slog.Error("insert note", "id", id, "error", err)
+			logger(ctx).Error("insert note failed", "id", id, "author", author, "error", err)
 			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to create note"})
 			return
 		}
@@ -58,7 +100,8 @@ func handleCreate(store *Store, cache *Cache) http.HandlerFunc {
 
 func handleGet(store *Store, cache *Cache) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
+		ctx, span := tracer.Start(r.Context(), "handler.Get")
+		defer span.End()
 		applyDelay(ctx, StageHandler)
 
 		id := strings.TrimPrefix(r.URL.Path, "/api/notes/")
@@ -66,13 +109,15 @@ func handleGet(store *Store, cache *Cache) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "id required"})
 			return
 		}
+		span.SetAttributes(attribute.String("note.id", id))
 
 		if shouldFail(ctx) {
+			span.SetAttributes(attribute.Bool("fault.injected", true))
+			logger(ctx).Warn("fault injected", "path", r.URL.Path, "fail_rate", optsFrom(ctx).failRate)
 			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "injected failure"})
 			return
 		}
 
-		// Try cache first.
 		n, err := cache.GetNote(ctx, id)
 		if err != nil {
 			n, err = store.GetNote(ctx, id)
@@ -81,16 +126,15 @@ func handleGet(store *Store, cache *Cache) http.HandlerFunc {
 					writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "not found"})
 					return
 				}
-				slog.Error("get note", "id", id, "error", err)
+				logger(ctx).Error("get note failed", "id", id, "error", err)
 				writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "internal error"})
 				return
 			}
 			cache.SetNote(ctx, n)
 		}
 
-		// Best-effort view bump (in-band, so latency knobs apply to it too).
 		if err := store.RecordView(ctx, id); err != nil {
-			slog.Warn("record view", "id", id, "error", err)
+			logger(ctx).Warn("record view failed", "id", id, "error", err)
 		}
 		cache.IncrViewCount(ctx, id)
 
@@ -100,18 +144,22 @@ func handleGet(store *Store, cache *Cache) http.HandlerFunc {
 
 func handleList(store *Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
+		ctx, span := tracer.Start(r.Context(), "handler.List")
+		defer span.End()
 		applyDelay(ctx, StageHandler)
 
 		if shouldFail(ctx) {
+			span.SetAttributes(attribute.Bool("fault.injected", true))
+			logger(ctx).Warn("fault injected", "path", r.URL.Path, "fail_rate", optsFrom(ctx).failRate)
 			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "injected failure"})
 			return
 		}
 
 		author := r.URL.Query().Get("author")
+		span.SetAttributes(attribute.String("author", author))
 		notes, err := store.ListNotes(ctx, author)
 		if err != nil {
-			slog.Error("list notes", "author", author, "error", err)
+			logger(ctx).Error("list notes failed", "author", author, "error", err)
 			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "internal error"})
 			return
 		}
@@ -122,18 +170,27 @@ func handleList(store *Store) http.HandlerFunc {
 	}
 }
 
-func handleDelete(store *Store, cache *Cache) http.HandlerFunc {
+func handleDelete(store *Store, cache *Cache, auth *AuthClient) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
+		ctx, span := tracer.Start(r.Context(), "handler.Delete")
+		defer span.End()
 		applyDelay(ctx, StageHandler)
+
+		author, ok := authenticate(ctx, w, r, auth, span)
+		if !ok {
+			return
+		}
 
 		id := strings.TrimPrefix(r.URL.Path, "/api/notes/")
 		if id == "" {
 			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "id required"})
 			return
 		}
+		span.SetAttributes(attribute.String("note.id", id), attribute.String("author", author))
 
 		if shouldFail(ctx) {
+			span.SetAttributes(attribute.Bool("fault.injected", true))
+			logger(ctx).Warn("fault injected", "path", r.URL.Path, "fail_rate", optsFrom(ctx).failRate)
 			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "injected failure"})
 			return
 		}
@@ -143,7 +200,7 @@ func handleDelete(store *Store, cache *Cache) http.HandlerFunc {
 				writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "not found"})
 				return
 			}
-			slog.Error("delete note", "id", id, "error", err)
+			logger(ctx).Error("delete note failed", "id", id, "author", author, "error", err)
 			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "internal error"})
 			return
 		}

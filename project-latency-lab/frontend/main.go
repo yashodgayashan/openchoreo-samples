@@ -7,6 +7,9 @@ import (
 )
 
 func main() {
+	shutdown := initTracer("frontend")
+	defer shutdown()
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "3000"
@@ -20,18 +23,24 @@ func main() {
 	if analyticsURL == "" {
 		analyticsURL = "http://localhost:8081"
 	}
+	authURL := os.Getenv("AUTH_SERVICE_URL")
+	if authURL == "" {
+		authURL = "http://localhost:8082"
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/notes", proxy(apiURL, "notes"))
 	mux.HandleFunc("/api/notes/", proxy(apiURL, "notes"))
 	mux.HandleFunc("/api/analytics/", proxy(analyticsURL, "analytics"))
+	mux.HandleFunc("/api/auth/", proxy(authURL, "auth"))
 	mux.Handle("/", staticHandler())
 
-	handler := loggingMiddleware(mux)
+	handler := loggingMiddleware(tracingMiddleware(mux))
 
 	log.Printf("frontend listening on :%s", port)
 	log.Printf("  api  -> %s", apiURL)
 	log.Printf("  anl  -> %s", analyticsURL)
+	log.Printf("  auth -> %s", authURL)
 	if err := http.ListenAndServe(":"+port, handler); err != nil {
 		log.Fatal(err)
 	}

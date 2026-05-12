@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type Cache struct {
@@ -19,7 +20,7 @@ func NewCache(addr string) *Cache {
 	if addr == "" {
 		return nil
 	}
-	client := redis.NewClient(&redis.Options{()
+	client := redis.NewClient(&redis.Options{
 		Addr:         addr,
 		DialTimeout:  2 * time.Second,
 		ReadTimeout:  1 * time.Second,
@@ -39,12 +40,17 @@ func (c *Cache) GetNote(ctx context.Context, id string) (*Note, error) {
 	if c == nil {
 		return nil, fmt.Errorf("cache disabled")
 	}
+	ctx, span := tracer.Start(ctx, "cache.GetNote")
+	defer span.End()
+	span.SetAttributes(attribute.String("note.id", id))
 	applyDelay(ctx, StageCache)
 
 	val, err := c.client.Get(ctx, "note:"+id).Bytes()
 	if err == redis.Nil {
+		span.SetAttributes(attribute.Bool("cache.hit", false))
 		return nil, fmt.Errorf("cache miss")
 	}
+	span.SetAttributes(attribute.Bool("cache.hit", true))
 	if err != nil {
 		slog.Warn("redis get note", "id", id, "error", err)
 		return nil, err
@@ -60,6 +66,9 @@ func (c *Cache) SetNote(ctx context.Context, n *Note) {
 	if c == nil || n == nil {
 		return
 	}
+	ctx, span := tracer.Start(ctx, "cache.SetNote")
+	defer span.End()
+	span.SetAttributes(attribute.String("note.id", n.ID))
 	applyDelay(ctx, StageCache)
 
 	b, err := json.Marshal(n)
@@ -75,6 +84,9 @@ func (c *Cache) DeleteNote(ctx context.Context, id string) {
 	if c == nil {
 		return
 	}
+	ctx, span := tracer.Start(ctx, "cache.DeleteNote")
+	defer span.End()
+	span.SetAttributes(attribute.String("note.id", id))
 	applyDelay(ctx, StageCache)
 	c.client.Del(ctx, "note:"+id, "views:"+id, "recent:"+id)
 }
@@ -83,6 +95,9 @@ func (c *Cache) IncrViewCount(ctx context.Context, id string) {
 	if c == nil {
 		return
 	}
+	ctx, span := tracer.Start(ctx, "cache.IncrViewCount")
+	defer span.End()
+	span.SetAttributes(attribute.String("note.id", id))
 	applyDelay(ctx, StageCache)
 
 	pipe := c.client.Pipeline()

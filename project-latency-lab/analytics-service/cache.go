@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type Cache struct {
@@ -40,6 +41,9 @@ func (c *Cache) GetStats(ctx context.Context, id string) (int64, []string, bool)
 	if c == nil {
 		return 0, nil, false
 	}
+	ctx, span := tracer.Start(ctx, "cache.GetStats")
+	defer span.End()
+	span.SetAttributes(attribute.String("note.id", id))
 	applyDelay(ctx, StageCache)
 
 	cs, err := c.client.Get(ctx, "views:"+id).Result()
@@ -61,6 +65,9 @@ func (c *Cache) SetStats(ctx context.Context, id string, count int64, recent []s
 	if c == nil {
 		return
 	}
+	ctx, span := tracer.Start(ctx, "cache.SetStats")
+	defer span.End()
+	span.SetAttributes(attribute.String("note.id", id))
 	applyDelay(ctx, StageCache)
 
 	pipe := c.client.Pipeline()

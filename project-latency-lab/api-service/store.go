@@ -8,6 +8,7 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type Note struct {
@@ -41,9 +42,12 @@ func NewStore(dsn string) *Store {
 	return &Store{db: db}
 }
 
-const queryTimeout = 35 * time.Second // generous: latency injection sleeps inside this window
+const queryTimeout = 35 * time.Second
 
 func (s *Store) InsertNote(ctx context.Context, id, author, body string) (*Note, error) {
+	ctx, span := tracer.Start(ctx, "store.InsertNote")
+	defer span.End()
+	span.SetAttributes(attribute.String("note.id", id))
 	applyDelay(ctx, StageDB)
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
@@ -62,6 +66,9 @@ func (s *Store) InsertNote(ctx context.Context, id, author, body string) (*Note,
 }
 
 func (s *Store) GetNote(ctx context.Context, id string) (*Note, error) {
+	ctx, span := tracer.Start(ctx, "store.GetNote")
+	defer span.End()
+	span.SetAttributes(attribute.String("note.id", id))
 	applyDelay(ctx, StageDB)
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
@@ -79,6 +86,9 @@ func (s *Store) GetNote(ctx context.Context, id string) (*Note, error) {
 }
 
 func (s *Store) ListNotes(ctx context.Context, author string) ([]Note, error) {
+	ctx, span := tracer.Start(ctx, "store.ListNotes")
+	defer span.End()
+	span.SetAttributes(attribute.String("author", author))
 	applyDelay(ctx, StageDB)
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
@@ -114,6 +124,9 @@ func (s *Store) ListNotes(ctx context.Context, author string) ([]Note, error) {
 }
 
 func (s *Store) DeleteNote(ctx context.Context, id string) error {
+	ctx, span := tracer.Start(ctx, "store.DeleteNote")
+	defer span.End()
+	span.SetAttributes(attribute.String("note.id", id))
 	applyDelay(ctx, StageDB)
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
@@ -130,6 +143,9 @@ func (s *Store) DeleteNote(ctx context.Context, id string) error {
 }
 
 func (s *Store) RecordView(ctx context.Context, id string) error {
+	ctx, span := tracer.Start(ctx, "store.RecordView")
+	defer span.End()
+	span.SetAttributes(attribute.String("note.id", id))
 	applyDelay(ctx, StageDB)
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
