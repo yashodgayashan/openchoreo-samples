@@ -12,9 +12,10 @@ openchoreo/project-latency-lab/
     ├── postgres.yaml                  # lab-postgres          (deployment/service)
     ├── redis.yaml                     # lab-redis             (deployment/service)
     ├── auth-service.yaml              # lab-auth-service      (deployment/service)
-    ├── api-service.yaml               # lab-api-service       (deployment/service)
-    ├── analytics-service.yaml         # lab-analytics-service (deployment/service)
-    └── frontend.yaml                  # lab-frontend          (deployment/web-application + 5xx alert)
+    ├── api-service.yaml               # lab-api-service        (deployment/service)
+    ├── api-service-broken.yaml        # lab-api-service-broken (deployment/service — intentionally fails to build)
+    ├── analytics-service.yaml         # lab-analytics-service  (deployment/service)
+    └── frontend.yaml                  # lab-frontend           (deployment/web-application + 5xx alert)
 ```
 
 Each component pairs a `Component` resource with a one-shot `WorkflowRun` that builds the image via the cluster `dockerfile-builder` workflow.
@@ -43,6 +44,18 @@ kubectl apply \
 The frontend ships with an `observability-alert-rule` trait that fires when
 more than 5 HTTP-500s appear in the logs within a minute — easy to trigger
 on demand by hitting any endpoint with `?fail_rate=1`.
+
+## Build-failure demo
+
+`api-service-broken.yaml` deploys a sibling component whose `main.go`
+references an undefined symbol, so the `dockerfile-builder` `WorkflowRun`
+fails at `go build`. Apply it on its own to demo how OpenChoreo surfaces
+build failures:
+
+```bash
+kubectl apply -f openchoreo/project-latency-lab/components/api-service-broken.yaml
+kubectl get workflowrun lab-api-service-broken-build-01 -o yaml
+```
 
 ## Cleanup
 
