@@ -38,24 +38,13 @@ kubectl apply \
   -f openchoreo/project-latency-lab/components/auth-service.yaml \
   -f openchoreo/project-latency-lab/components/api-service.yaml \
   -f openchoreo/project-latency-lab/components/analytics-service.yaml \
+  -f openchoreo/project-latency-lab/components/api-service-broken.yaml \
   -f openchoreo/project-latency-lab/components/frontend.yaml
 ```
 
 The frontend ships with an `observability-alert-rule` trait that fires when
 more than 5 HTTP-500s appear in the logs within a minute — easy to trigger
 on demand by hitting any endpoint with `?fail_rate=1`.
-
-## Build-failure demo
-
-`api-service-broken.yaml` deploys a sibling component whose `main.go`
-references an undefined symbol, so the `dockerfile-builder` `WorkflowRun`
-fails at `go build`. Apply it on its own to demo how OpenChoreo surfaces
-build failures:
-
-```bash
-kubectl apply -f openchoreo/project-latency-lab/components/api-service-broken.yaml
-kubectl get workflowrun lab-api-service-broken-build-01 -o yaml
-```
 
 ## Cleanup
 
