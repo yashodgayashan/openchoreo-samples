@@ -15,6 +15,8 @@ func main() {
 		port = "3000"
 	}
 
+
+	
 	apiURL := os.Getenv("API_SERVICE_URL")
 	if apiURL == "" {
 		apiURL = "http://localhost:8080"
