@@ -6,7 +6,7 @@ OpenChoreo manifests for the [latency-lab](../../project-latency-lab) sample —
 ## Layout
 
 ```
-openchoreo/project-latency-lab/
+project-latency-lab/
 ├── project.yaml                       # Project: latency-lab
 └── components/
     ├── postgres.yaml                  # lab-postgres          (deployment/service)
@@ -24,11 +24,11 @@ Each component pairs a `Component` resource with a one-shot `WorkflowRun` that b
 
 - An OpenChoreo cluster (control plane + observability plane).
 - `kubectl` access.
-- Source is pulled from `https://github.com/yashodgayashan/openchoreo-samples` on `main`. If you're working off a fork, swap the URL in `openchoreo/project-latency-lab/components/*.yaml` first.
+- Source is pulled from [`github.com/openchoreo/sample-workloads`](https://github.com/openchoreo/sample-workloads/tree/main/project-latency-lab) on `main`. If you're working off a fork, swap the URL in `project-latency-lab/components/*.yaml` first.
 
 ## Deploy
 
-Run from the repo root:
+Apply directly from GitHub (no checkout required):
 
 ```bash
 kubectl apply -f openchoreo/project-latency-lab/project.yaml
@@ -46,8 +46,20 @@ The frontend ships with an `observability-alert-rule` trait that fires when
 more than 5 HTTP-500s appear in the logs within a minute — easy to trigger
 on demand by hitting any endpoint with `?fail_rate=1`.
 
+## Build-failure demo
+
+`api-service-broken.yaml` deploys a sibling component whose `main.go`
+references an undefined symbol, so the `dockerfile-builder` `WorkflowRun`
+fails at `go build`. Apply it on its own to demo how OpenChoreo surfaces
+build failures:
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/openchoreo/sample-workloads/main/project-latency-lab/components/api-service-broken.yaml
+kubectl get workflowrun lab-api-service-broken-build-01 -o yaml
+```
+
 ## Cleanup
 
 ```bash
-kubectl delete -f openchoreo/project-latency-lab/project.yaml
+kubectl delete -f https://raw.githubusercontent.com/openchoreo/sample-workloads/main/project-latency-lab/project.yaml
 ```

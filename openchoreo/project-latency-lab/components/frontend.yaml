@@ -11,6 +11,7 @@ spec:
     kind: ClusterComponentType
     name: deployment/web-application
 
+  autoBuild: true
   autoDeploy: true
 
   traits:

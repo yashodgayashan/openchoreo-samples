@@ -10,7 +10,7 @@ spec:
   componentType:
     kind: ClusterComponentType
     name: deployment/service
-
+  autoBuild: true
   autoDeploy: true
 
   workflow:

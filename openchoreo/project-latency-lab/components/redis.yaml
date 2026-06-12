@@ -12,6 +12,7 @@ spec:
     name: deployment/service
 
   autoDeploy: true
+  autoBuild: true
 
   workflow:
     kind: ClusterWorkflow
